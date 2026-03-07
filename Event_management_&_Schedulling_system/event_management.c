@@ -8,7 +8,7 @@
 
 typedef struct Participant {        //typedef is basically using to not write "struct" all the time
     int participantID;
-    char name[50];
+    char name[100];
     struct Participant* next;
 } Participant;                      //Here Participant becomes alias, so we can use it without "struct"
 
@@ -16,7 +16,7 @@ typedef struct Participant {        //typedef is basically using to not write "s
 
 typedef struct Event {
     int eventID;
-    char name[50];
+    char name[150];
     int priority;      // 1 = High, 2 = Medium, 3 = Low
     int startTime;     // Example: 1300 = 1:00 PM
     int endTime;
@@ -33,7 +33,7 @@ typedef struct Event {
 
 typedef struct Resource {
     int resourceID;
-    char name[50];
+    char name[80];
     struct Resource* left;
     struct Resource* right;
 } Resource;
@@ -54,12 +54,17 @@ PriorityQueue pq;               // pq is a structure for managing event prioriti
 Resource* root = NULL;
 
 void freeParticipants(Event* e);
+void inorderResources(Resource* root);
 
 /* ============================================================================================================================= */
 /* =================================================== RESOURCE BST FUNCTIONS =================================================== */
 
 Resource* createResource(int id, char name[]) {                     //Why "Resource*" instead of void. Because we will use this function later. It must give return a value. "void" doesn't return anything.
     Resource* newNode = (Resource*)malloc(sizeof(Resource));
+    if (newNode == NULL) {
+        printf("Memory allocation failed\n");
+        return NULL;
+    }
     newNode->resourceID = id;
     strcpy(newNode->name, name);        //"strcpy" copies character by character until \0
     newNode->left = NULL;
@@ -106,12 +111,32 @@ void searchResourceMenu(){
         printf("Resource not found\n");
 }
 
-void inorderResources(Resource* root) {
-    if (root != NULL) {
-        inorderResources(root->left);
-        printf("Resource ID: %d | Name: %s\n", root->resourceID, root->name);
-        inorderResources(root->right);
+void displayResources(){
+
+    if(root == NULL){
+    printf("No resources available\n");
+    return;
     }
+
+    printf("\n=============================================\n");
+    printf("Resource ID | Resource Name\n");
+    printf("=============================================\n");
+    inorderResources(root);
+}
+
+
+void inorderResources(Resource* root) {
+
+    if(root == NULL)
+        return;                 //stops the recursion when done
+
+    inorderResources(root->left);
+
+    printf("%-11d | %-30.30s\n",
+           root->resourceID,
+           root->name);
+
+    inorderResources(root->right);
 }
 
 void freeResource(Resource* root){
@@ -173,8 +198,8 @@ void insertIntoPQ(PriorityQueue* pq, Event* event) {
     }
 
     pq->events[pq->size] = event;
-    heapifyUp(pq, pq->size);
-    pq->size++;
+    pq->size++;                     //Increasing size first beaccuase it is safer
+    heapifyUp(pq, pq->size - 1);
 }
 
 Event* removeFromPQ(PriorityQueue* pq) {
@@ -189,12 +214,19 @@ Event* removeFromPQ(PriorityQueue* pq) {
     return top;                 //return the top
 }
 
+//Necessary when updating event
+void rebuildHeap(PriorityQueue* pq){
+    for(int i = pq->size/2 - 1; i >= 0; i--){
+        heapifyDown(pq, i);
+    }
+}
+
 /* ================================================================================================================================================================ */
 /* =================================================== EVENT FUNCTIONS =========================================================================================== */
 
 Event* searchEventByID(int id) {
     for (int i = 0; i < totalEvents; i++) {
-        if (eventList[i].eventID == id && eventList[i].Cancelled == 0)
+        if (eventList[i].eventID == id)
             return &eventList[i];
     }
     return NULL;
@@ -221,16 +253,20 @@ void printTime(int t){
     printf("%02d:%02d", hour, min);
 }
 
-int checkTimeConflict(int start, int end, int resourceID) {
+int checkTimeConflict(int start, int end, int resourceID, int ignoreEventID) {
     for (int i = 0; i < totalEvents; i++) {
-        if (eventList[i].Cancelled == 0 && eventList[i].resourceID == resourceID) {
-
-            if (eventList[i].startTime < end &&
-                start < eventList[i].endTime)
+        if (eventList[i].Cancelled == 0 && eventList[i].resourceID == resourceID && eventList[i].eventID != ignoreEventID) {
+            if (eventList[i].startTime < end && start < eventList[i].endTime)
                 return 1;       // conflict
         }
     }
     return 0;
+}
+
+char* priorityText(int p){
+    if(p==1) return "HIGH";
+    if(p==2) return "MEDIUM";
+    return "LOW";
 }
 
 void addEvent() {
@@ -238,11 +274,17 @@ void addEvent() {
         printf("Event limit reached!\n");
         return;
     }
-
-    Event* e = &eventList[totalEvents];
+    
+    Event temp;
+    Event* e = &temp;
 
     printf("Enter Event ID: ");
     scanf("%d", &e->eventID);
+
+    if (e->eventID<=0) {
+    printf("Invalid Event ID!\n");
+    return;
+    }
 
     /* Check duplicate ID immediately */
     if(searchEventByID(e->eventID)!=NULL) {
@@ -256,30 +298,16 @@ void addEvent() {
     printf("Enter Priority (1=High,2=Medium,3=Low): ");
     scanf("%d", &e->priority);
 
+    if(e->priority <1 || e->priority >3){
+        printf("Invalid priority!\n");
+        return;
+    }
 
     printf("Enter Start Time (e.g., 1300): ");
     scanf("%d", &e->startTime);
 
     printf("Enter End Time: ");
     scanf("%d", &e->endTime);
-
-    printf("Enter Resource ID: ");
-    scanf("%d", &e->resourceID);
-
-    if (searchResource(root, e->resourceID) == NULL) {
-        printf("Resource does not exist!\n");
-        return;
-    }
-
-    if(e->priority <1 || e->priority >3){
-    printf("Invalid priority!\n");
-    return;
-    }
-
-    if (checkTimeConflict(e->startTime, e->endTime, e->resourceID)) {
-        printf("Time conflict detected! Event not added.\n");
-        return;
-    }
 
     if(!validTime(e->startTime)){
     printf("Invalid Start Time!\n");
@@ -296,14 +324,34 @@ void addEvent() {
     return;
     }
 
+    printf("Enter Resource ID: ");
+    scanf("%d", &e->resourceID);
+
+    if (searchResource(root, e->resourceID) == NULL) {
+        printf("Resource does not exist!\n");
+        return;
+    }
+
+
+    if (checkTimeConflict(e->startTime, e->endTime, e->resourceID, -1)) {
+        printf("Time conflict detected! Event not added.\n");
+        return;
+    }
+
     printf("Enter Maximum Participants: ");
     scanf("%d", &e->maxParticipants);
+
+    if(e->maxParticipants <= 0){
+    printf("Invalid participant limit!\n");
+    return;
+    }
 
     e->participantHead = NULL;
     e->participantCount = 0;
     e->Cancelled = 0;
 
-    insertIntoPQ(&pq, e);
+    eventList[totalEvents] = temp;
+    insertIntoPQ(&pq, &eventList[totalEvents]);
 
     totalEvents++;
 
@@ -322,38 +370,170 @@ void searchEventMenu(){
         return;
     }
 
-    printf("Event Found: %s | Priority:%d | Time:%d-%d\n",
-            e->name,e->priority,e->startTime,e->endTime);
+    printf("Event Found: %s | Priority:%s | ",
+            e->name, priorityText(e->priority));
+    printTime(e->startTime);
+    printf(" - ");
+    printTime(e->endTime);
+}
+
+void updateEvent(int id){
+
+    Event* e = searchEventByID(id);
+
+    if(e == NULL){
+        printf("Event not found!\n");
+        return;
+    }
+
+    char newName[150];
+    int newPriority;
+    int newStart;
+    int newEnd;
+
+    printf("Enter New Event Name: ");
+    scanf(" %[^\n]", newName);
+
+    printf("Enter New Priority (1=High,2=Medium,3=Low): ");
+    scanf("%d",&newPriority);
+
+    printf("Enter New Start Time: ");
+    scanf("%d",&newStart);
+
+    printf("Enter New End Time: ");
+    scanf("%d",&newEnd);
+
+    if(newPriority <1 || newPriority >3){
+        printf("Invalid priority!\n");
+        return;
+    }
+
+    if(!validTime(newStart) || !validTime(newEnd)){
+        printf("Invalid time!\n");
+        return;
+    }
+
+    if(newStart >= newEnd){
+        printf("Invalid time range!\n");
+        return;
+    }
+
+    if(checkTimeConflict(newStart, newEnd, e->resourceID, e->eventID)){
+        printf("Time conflict detected!\n");
+        return;
+    }
+
+    strcpy(e->name,newName);
+    e->priority = newPriority;
+    e->startTime = newStart;
+    e->endTime = newEnd;
+
+    rebuildHeap(&pq);
+
+    printf("Event Updated Successfully!\n");
 }
 
 void displayAllEvents() {
 
-    printf("\n---------- Scheduled Events (By Priority) -----------\n");
+    printf("\n========================================================================================================================\n");
+    printf("ID   | Event Name                                         | Pri | Time        | Resource Name             | Participants\n");
+    printf("========================================================================================================================\n");
 
-    PriorityQueue temp = pq;   //copy the heap
+    Event* events[MAX_EVENTS];
+    int count = 0;
 
-    Event* e;
-
-    while ((e = removeFromPQ(&temp)) != NULL) {
-
-        if (!e->Cancelled) {
-
-            Resource* r = searchResource(root, e->resourceID);
-
-            printf("\n------ EVENT LIST ------\n");
-            printf("ID:%d | %s | Priority:%d | Time:",
-                   e->eventID, e->name, e->priority);
-
-            printTime(e->startTime);
-            printf(" - ");
-            printTime(e->endTime);
-
-            printf(" | Resource ID:%d ", e->resourceID);
-
-            printf(" | Resource:%s | Participants:%d/%d\n",
-                   r ? r->name : "Unknown", e->participantCount, e->maxParticipants);
+    for(int i = 0; i < totalEvents; i++){
+        if(!eventList[i].Cancelled){
+            events[count++] = &eventList[i];
         }
     }
+
+    if(count == 0){
+        printf("No active events available.\n");
+        return;
+    }
+
+    for(int i = 0; i < count - 1; i++){
+        for(int j = i + 1; j < count; j++){
+            if(events[i]->priority > events[j]->priority){
+                Event* temp = events[i];
+                events[i] = events[j];
+                events[j] = temp;
+            }
+        }
+    }
+
+    for(int i = 0; i < count; i++){
+        Event* e = events[i];
+
+        Resource* r = searchResource(root, e->resourceID);
+
+        printf("%-4d | %-50.50s | %-3s | ",
+               e->eventID, e->name, priorityText(e->priority));
+
+        printTime(e->startTime);
+        printf("-");
+        printTime(e->endTime);
+
+        printf(" | %-25.25s | %d/%d\n",
+               r ? r->name : "Unknown",
+               e->participantCount,
+               e->maxParticipants);
+    }
+
+    printf("========================================================================================================================\n");
+}
+
+void displayEventsByTime() {
+    // Count active events
+    int active = 0;
+    for(int i=0; i<totalEvents; i++) {
+        if(!eventList[i].Cancelled) active++;
+    }
+
+    if(active == 0) {
+        printf("No active events to display.\n");
+        return;
+    }
+
+    // Create array of pointers to active events. Storing active events to a temporary pointer
+    Event* activeEvents[MAX_EVENTS];
+    int i = 0;
+    for(int j=0; j<totalEvents; j++) {
+        if(!eventList[j].Cancelled) {
+            activeEvents[i++] = &eventList[j];
+        }
+    }
+
+    // Sort by startTime using simple bubble sort (good enough for small n)
+    for(int i=0; i<active-1; i++){
+        for(int j=i+1; j<active; j++){
+            if(activeEvents[i]->startTime > activeEvents[j]->startTime){
+                Event* temp = activeEvents[i];
+                activeEvents[i] = activeEvents[j];
+                activeEvents[j] = temp;
+            }
+        }
+    }
+
+    // Print table header
+    printf("\n========================================================================================================================\n");
+    printf("ID   | Event Name                                         | Pri | Time        | Resource Name             | Participants\n");
+    printf("========================================================================================================================\n");
+
+    // Print events
+    for(int i=0; i<active; i++){
+        Event* e = activeEvents[i];
+        Resource* r = searchResource(root, e->resourceID);
+
+        printf("%-4d | %-50.50s | %-3s | ", e->eventID, e->name, priorityText(e->priority));
+        printTime(e->startTime);
+        printf("-"); 
+        printTime(e->endTime);
+        printf(" | %-25.25s | %d/%d\n", r ? r->name : "Unknown", e->participantCount, e->maxParticipants);
+    }
+
+    printf("========================================================================================================================\n");
 }
 
 void cancelEvent(int id) {
@@ -361,6 +541,11 @@ void cancelEvent(int id) {
     if (e == NULL) {
         printf("Event not found!\n");
         return;
+    }
+
+    if(e->Cancelled){
+    printf("Event already cancelled!\n");
+    return;
     }
 
     freeParticipants(e);
@@ -382,38 +567,91 @@ void registerParticipant(int eventID) {
         return;
     }
 
+    if(e->Cancelled){
+        printf("Cannot register. Event is cancelled!\n");
+        return;
+    }
+
     if (e->participantCount >= e->maxParticipants) {
         printf("Participant limit reached!\n");
         return;
     }
 
+    int newID;
+
+    printf("Enter Participant ID: ");
+    scanf("%d", &newID);
+
+    if(newID <= 0){
+        printf("Invalid Participant ID!\n");
+        return;
+    }
+
+    Participant* temp = e->participantHead;
+    while(temp != NULL){
+        if(temp->participantID == newID){
+            printf("Participant ID already exists!\n");
+            return;
+        }
+        temp = temp->next;
+    }
+
     Participant* newP = (Participant*)malloc(sizeof(Participant));
-    if (newP == NULL) {
+    if(newP == NULL){
         printf("Memory allocation failed!\n");
         return;
     }
 
-    printf("Enter Participant ID: ");
-    scanf("%d", &newP->participantID);
+    newP->participantID = newID;
 
     printf("Enter Participant Name: ");
     scanf(" %[^\n]", newP->name);
-
-    Participant* temp = e->participantHead;
-    while(temp != NULL){
-    if(temp->participantID == newP->participantID) {
-        printf("Participant ID already exists!\n");
-        free(newP);
-        return;
-    }
-    temp = temp->next;
-    }
 
     newP->next = e->participantHead;
     e->participantHead = newP;
     e->participantCount++;
 
     printf("Participant Registered Successfully!\n");
+}
+
+void removeParticipant(int eventID, int participantID) {
+
+    Event* e = searchEventByID(eventID);
+
+    if(e == NULL){
+        printf("Event not found!\n");
+        return;
+    }
+
+    if(e->Cancelled){
+    printf("Event is cancelled!\n");
+    return;
+    }
+
+    Participant* temp = e->participantHead;
+    Participant* prev = NULL;
+
+    while(temp != NULL){
+
+        if(temp->participantID == participantID){
+
+            if(prev == NULL)
+                e->participantHead = temp->next;
+            else
+                prev->next = temp->next;
+
+            free(temp);
+            e->participantCount--;
+
+            printf("Participant removed successfully!\n");
+            return;
+        }
+
+        prev = temp;
+        temp = temp->next;
+    }
+
+    printf("Participant not found!\n");
 }
 
 void displayParticipants(int eventID) {
@@ -424,15 +662,23 @@ void displayParticipants(int eventID) {
         return;
     }
 
+    if(e->participantHead == NULL){
+        printf("No participants registered for this event.\n");
+        return;
+    }
+
     Participant* temp = e->participantHead;
 
-    printf("Participants for Event %s:\n", e->name);
+    printf("\nParticipants for Event: %s\n", e->name);
+    printf("=============================================\n");
+    printf("Participant ID | Name\n");
+    printf("=============================================\n");
 
     while (temp != NULL) {
-        printf("ID:%d | Name:%s\n",
-               temp->participantID, temp->name);
+        printf("%-15d | %-30.30s\n", temp->participantID, temp->name);
         temp = temp->next;
     }
+    printf("=============================================\n");
 }
 
 void freeParticipants(Event* e){
@@ -455,6 +701,7 @@ void systemSummary(){
     int active=0;
     int cancelled=0;
     int totalParticipants = 0;
+    int eventsInQueue = 0;
 
     for(int i=0;i<totalEvents;i++){
         if(eventList[i].Cancelled)
@@ -464,29 +711,47 @@ void systemSummary(){
         totalParticipants += eventList[i].participantCount;
     }
 
-    printf("\n===== SYSTEM SUMMARY =====\n");
-    printf("Total Events Created: %d\n", totalEvents);
-    printf("Active Events: %d\n", active);
-    printf("Cancelled Events: %d\n", cancelled);
-    printf("Events in Queue: %d\n", pq.size);
-    printf("Total Participants Registered: %d\n", totalParticipants);
+    for(int i = 0; i < pq.size; i++){
+        if(!pq.events[i]->Cancelled)
+            eventsInQueue++;
+    }
+
+    printf("\n=====================================\n");
+    printf("            SYSTEM SUMMARY\n");
+    printf("=====================================\n");
+    printf("Total Events Created      : %d\n", totalEvents);
+    printf("Active Events             : %d\n", active);
+    printf("Cancelled Events          : %d\n", cancelled);
+    printf("Events in Priority Queue  : %d\n", eventsInQueue);
+    printf("Total Participants        : %d\n", totalParticipants);
+    printf("=====================================\n");
 }
 
 /* =============================================== MAIN MENU ================================================================================================= */
 
 void menu() {
+     printf("=====================================\n");
     printf("\n===== Event Management System =====\n");
+    printf("=====================================\n");
+
     printf("1. Add Event\n");
     printf("2. Register Participant\n");
-    printf("3. Display Events\n");
-    printf("4. Display Participants\n");
-    printf("5. Cancel Event\n");
-    printf("6. Add Resource\n");
-    printf("7. Display Resources\n");
-    printf("8. Search Resource\n");
-    printf("9. Process Event\n");
-    printf("10. System Summary\n");
-    printf("11. Exit\n");
+    printf("3. Display Events (Priority Order)\n");
+    printf("4. Display Events (Time Order)\n");
+    printf("5. Display Participants\n");
+    printf("6. Update Event\n");
+    printf("7. Cancel Event\n");
+    printf("-------------------------------------\n");
+    printf("8. Add Resource\n");
+    printf("9. Display Resources\n");
+    printf("10. Search Resource\n");
+    printf("-------------------------------------\n");
+    printf("11. Process Event\n");
+    printf("12. System Summary\n");
+    printf("13. Remove Participant\n");
+    printf("14. Exit\n");
+
+    printf("=====================================\n");
     printf("Enter choice: ");
 }
 
@@ -515,20 +780,28 @@ int main() {
         case 3:
             displayAllEvents();
             break;
-
         case 4:
-            printf("Enter Event ID: ");
+            displayEventsByTime();
+            break;
+        case 5:
+            printf("Enter Event ID to Display Participants: ");
             scanf("%d", &id);
             displayParticipants(id);
             break;
 
-        case 5:
+        case 6:
+            printf("Enter Event ID to Update: ");
+            scanf("%d", &id);
+            updateEvent(id);
+            break;
+
+        case 7:
             printf("Enter Event ID to Cancel: ");
             scanf("%d", &id);
             cancelEvent(id);
             break;
 
-        case 6:
+        case 8:
             printf("Enter Resource ID: ");
             scanf("%d", &id);
             printf("Enter Resource Name: ");
@@ -542,14 +815,14 @@ int main() {
             }
             break;
 
-        case 7:
-            inorderResources(root);
+        case 9:
+            displayResources();
             break;
 
-        case 8:
+        case 10:
             searchResourceMenu();
             break;
-        case 9:
+        case 11:
             {
                 Event* e = removeFromPQ(&pq);
             
@@ -561,18 +834,38 @@ int main() {
                     printf("No event to process!\n");
                  }
                    else{
-                    printf("\nProcessing Event:\n");
-                    printf("ID:%d | %s | Priority:%d\n", e->eventID, e->name, e->priority);
+                    printf("\n=====================================\n");
+                    printf("          PROCESSING EVENT\n");
+                    printf("=====================================\n");
+                    printf("Event ID   : %d\n", e->eventID);
+                    printf("Event Name : %s\n", e->name);
+                    printf("Priority   : %s\n", priorityText(e->priority));
+                    printf("=====================================\n");
                 }
             }
-break;
-
-         case 10:
+            break;
+         case 12:
             systemSummary();
             break;
-        
-        case 11:
+        case 13:
+            {
+                int eventID;
+                int participantID;
+
+                printf("Enter Event ID: ");
+                scanf("%d", &eventID);
+
+                printf("Enter Participant ID to remove: ");
+                scanf("%d", &participantID);
+
+                removeParticipant(eventID, participantID);
+            }
+            break;
+        case 14:
             printf("Exiting.....\n");
+            for(int i=0;i<totalEvents;i++) {
+                freeParticipants(&eventList[i]);
+            }
             freeResource(root);
             exit(0);
 
