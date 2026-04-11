@@ -480,7 +480,9 @@ void heapifyUp(PriorityQueue* pq, int i) {
 }
 
 void heapifyDown(PriorityQueue* pq, int i) {
-    int best = i, left = 2*i+1, right = 2*i+2;
+    int best = i,
+    left = 2*i+1,
+    right = 2*i+2;
     if (left  < pq->size && compareEvents(pq->indices[left],  pq->indices[best])) best = left;
     if (right < pq->size && compareEvents(pq->indices[right], pq->indices[best])) best = right;
     if (best != i) {
