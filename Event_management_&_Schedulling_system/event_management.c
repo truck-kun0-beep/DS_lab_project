@@ -161,7 +161,7 @@ void hmInsert(HashMap* hm, int key, int value) {
         int idx = (h + i) % HASH_SIZE;
         if (hm->slots[idx].key == HM_EMPTY) {
             int dest = (firstDeleted != -1) ? firstDeleted : idx;
-            hm->slots[dest].key = key;
+            hm->slots[dest].key = key;      //destination can be first deleted slot or current empty slot
             hm->slots[dest].value = value;
             return;
         }
@@ -227,7 +227,10 @@ int partialMatch(char haystack[], char needle[]) {
     for (int i = 0; i <= hLen - nLen; i++) {
         int match = 1;
         for (int j = 0; j < nLen; j++) {
-            if (tolower(haystack[i+j]) != tolower(needle[j])) { match = 0; break; }
+            if (tolower(haystack[i+j]) != tolower(needle[j])) {
+                match = 0;
+                break;
+            }
         }
         if (match) return 1;
     }
@@ -259,8 +262,8 @@ int validDate(int date) {
     int month = (date / 100) % 100;
     int day = date % 100;
     if (year < 2024 || year > 2050) return 0;
-    if (month < 1 || month > 12)  return 0;
-    if (day < 1 || day > 31)    return 0;
+    if (month < 1 || month > 12) return 0;
+    if (day < 1 || day > 31) return 0;
     if ((month==4||month==6||month==9||month==11) && day > 30) return 0;
     if (month == 2 && day > 29) return 0;
     return 1;
@@ -292,7 +295,6 @@ void getCurrentDateTime(int* outDate, int* outTime) {
 void checkAndAutoComplete() {
     int nowDate, nowTime;
     getCurrentDateTime(&nowDate, &nowTime);
-    int autoCompleted = 0;
 
     while (pq.size > 0) {
         int idx = pq.indices[0];
@@ -304,12 +306,9 @@ void checkAndAutoComplete() {
         if (expired) {
             priorityOrder(&pq);
             e->isDone = 1;
-            autoCompleted++;
             printf(GREEN "  [AUTO] Event \"%s\" marked as completed.\n" RESET, e->name);
         } else break;
     }
-    if (autoCompleted > 0)
-        printf(CYAN "  %d event(s) auto-completed based on current time.\n" RESET, autoCompleted);
 }
 
 void printNextEventBanner() {
@@ -407,7 +406,9 @@ void displayResources() {
 
 void freeResource(Resource* r) {
     if (!r) return;
-    freeResource(r->left); freeResource(r->right); free(r);
+    freeResource(r->left);
+    freeResource(r->right);
+    free(r);
 }
 
 int countResources(Resource* r) {
